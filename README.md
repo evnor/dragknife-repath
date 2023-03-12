@@ -24,6 +24,7 @@ cargo build --release
 The output should be in `/target/release/`
 
 ### TODO
+* Add option to adjust the feed rate of swivel movements?
 * Separate the GCode fixing and the egui stuff
 * Add tests
 * Look at which parts of `types.rs`, `lib.rs` and `vec3.rs` should be `pub`
