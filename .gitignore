@@ -1,0 +1,4 @@
+/target
+/.vscode
+*.cnc
+!test_input.cnc

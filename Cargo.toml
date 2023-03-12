@@ -1,0 +1,31 @@
+[package]
+name = "dragknife-repath"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+console_error_panic_hook = "0.1.6"
+eframe = {version = "0.21.3", features = ["persistence"]}
+egui = "0.21.0"
+gcode = "0.6.1"
+rfd = "0.11.2"
+serde = "1.0.154"
+
+
+# native:
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tracing-subscriber = "0.3"
+
+# web:
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1.6"
+tracing-wasm = "0.2"
+wasm-bindgen-futures = "0.4"
+
+[profile.release]
+opt-level = 2
+
+[profile.dev.package."*"]
+opt-level = 2
