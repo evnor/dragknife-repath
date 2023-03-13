@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::{prelude::*, Result};
 use std::{f32::consts::PI, path::PathBuf};
 
 use eframe::CreationContext;
@@ -12,7 +14,9 @@ pub struct DragknifeApp {
     output_name: String,
     input_file: Option<PathBuf>,
     #[serde(skip)]
-    output_contents: Option<String>,
+    output_contents: Result<Option<String>>,
+    #[serde(skip)]
+    output_file: Option<PathBuf>,
 }
 
 impl Default for DragknifeApp {
@@ -24,7 +28,8 @@ impl Default for DragknifeApp {
                 sharp_angle_threshold: 10. * PI / 180.,
             },
             input_file: None,
-            output_contents: None,
+            output_file: None,
+            output_contents: Ok(None),
             output_name: "".to_string(),
         }
     }
@@ -47,6 +52,7 @@ impl eframe::App for DragknifeApp {
         let Self {
             config,
             input_file,
+            output_file,
             output_name,
             output_contents,
         } = self;
@@ -87,28 +93,61 @@ impl eframe::App for DragknifeApp {
                         .show(ui, |ui| ui.monospace(picked_path.display().to_string()));
                 });
                 if ui.button("Repath").clicked() {
-                    let fc = std::fs::read_to_string(&picked_path).unwrap();
-                    let got: Vec<_> = gcode::parse(&fc).collect();
-                    let path = DragknifePath::from_gcode(got.iter());
-                    let fixed = path.to_fixed_gcode(&config);
-                    let output_file = picked_path.with_file_name(output_name);
-                    let output = fixed.iter().map(|g| format!("{}\n", g)).collect::<String>();
-                    std::fs::write(output_file, &output).unwrap();
-                    *output_contents = Some(output);
+                    match repath_and_write(picked_path, &config, &output_name) {
+                        Ok((output, output_file_opt)) => {
+                            *output_contents = Ok(Some(output));
+                            *output_file = output_file_opt
+                        }
+                        Err(err) => *output_contents = Err(err),
+                    }
                 }
             }
-            ui.collapsing("Repathed GCode", |ui| {
-                if let Some(output) = output_contents {
+            if let Ok(Some(output)) = output_contents {
+                ui.horizontal(|ui| {
                     if ui.button("📋").on_hover_text("Click to copy").clicked() {
                         ui.output_mut(|o| o.copied_text = output.clone());
                     }
-                    egui::ScrollArea::vertical().show(ui, |ui| {
+                    if let Some(output_file_actual) = output_file {
+                        egui::ScrollArea::horizontal()
+                            .stick_to_right(true)
+                            .id_source("second scroll area")
+                            .show(ui, |ui| {
+                                ui.monospace(output_file_actual.display().to_string())
+                            });
+                    } else {
+                        ui.label("Output file name was empty: did not write to file.");
+                    }
+                });
+                egui::ScrollArea::vertical()
+                    .show(ui, |ui| {
                         ui.label(output.as_str());
                     });
-                } else {
-                    ui.label("No output");
-                }
-            });
+            } else if let Err(e) = output_contents {
+                ui.label(format!("{e}"));
+            } else {
+                ui.label("No output");
+            }
         });
     }
+}
+
+fn repath_and_write(
+    input_file: &PathBuf,
+    config: &DragknifeConfig,
+    output_name: &str,
+) -> Result<(String, Option<PathBuf>)> {
+    let fc = std::fs::read_to_string(input_file)?;
+    let got: Vec<_> = gcode::parse(&fc).collect();
+    let path = DragknifePath::from_gcode(got.iter());
+    let fixed = path.to_fixed_gcode(config);
+    let output = fixed.iter().map(|g| format!("{}\n", g)).collect::<String>();
+    let output_file = if !output_name.is_empty() {
+        let output_file = input_file.with_file_name(output_name);
+        let file = File::create(&output_file)?;
+        write!(&file, "{output}")?;
+        Some(output_file)
+    } else {
+        None
+    };
+    Ok((output, output_file))
 }
