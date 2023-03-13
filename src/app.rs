@@ -3,6 +3,7 @@ use std::io::{prelude::*, Result};
 use std::{f32::consts::PI, path::PathBuf};
 
 use eframe::CreationContext;
+use gcode::Mnemonic;
 use serde::{Deserialize, Serialize};
 
 use crate::{types::DragknifeConfig, DragknifePath};
@@ -13,6 +14,7 @@ pub struct DragknifeApp {
     config: DragknifeConfig,
     output_name: String,
     input_file: Option<PathBuf>,
+    skip_m3: bool,
     #[serde(skip)]
     output_contents: Result<Option<String>>,
     #[serde(skip)]
@@ -29,6 +31,7 @@ impl Default for DragknifeApp {
             },
             input_file: None,
             output_file: None,
+            skip_m3: true,
             output_contents: Ok(None),
             output_name: "".to_string(),
         }
@@ -53,6 +56,7 @@ impl eframe::App for DragknifeApp {
             config,
             input_file,
             output_file,
+            skip_m3,
             output_name,
             output_contents,
         } = self;
@@ -78,6 +82,7 @@ impl eframe::App for DragknifeApp {
                 })
                 .text("Sharp corner threshold (°)"),
             );
+            ui.checkbox(skip_m3, "Remove M3 commands from output");
             ui.separator();
             ui.add(egui::TextEdit::singleline(output_name).hint_text("Output filename"));
             if ui.button("Open file…").clicked() {
@@ -93,7 +98,7 @@ impl eframe::App for DragknifeApp {
                         .show(ui, |ui| ui.monospace(picked_path.display().to_string()));
                 });
                 if ui.button("Repath").clicked() {
-                    match repath_and_write(picked_path, &config, &output_name) {
+                    match repath_and_write(picked_path, &config, &output_name, *skip_m3) {
                         Ok((output, output_file_opt)) => {
                             *output_contents = Ok(Some(output));
                             *output_file = output_file_opt
@@ -118,10 +123,9 @@ impl eframe::App for DragknifeApp {
                         ui.label("Output file name was empty: did not write to file.");
                     }
                 });
-                egui::ScrollArea::vertical()
-                    .show(ui, |ui| {
-                        ui.label(output.as_str());
-                    });
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.label(output.as_str());
+                });
             } else if let Err(e) = output_contents {
                 ui.label(format!("{e}"));
             } else {
@@ -135,12 +139,23 @@ fn repath_and_write(
     input_file: &PathBuf,
     config: &DragknifeConfig,
     output_name: &str,
+    skip_m3: bool,
 ) -> Result<(String, Option<PathBuf>)> {
     let fc = std::fs::read_to_string(input_file)?;
     let got: Vec<_> = gcode::parse(&fc).collect();
     let path = DragknifePath::from_gcode(got.iter());
     let fixed = path.to_fixed_gcode(config);
-    let output = fixed.iter().map(|g| format!("{}\n", g)).collect::<String>();
+    let output = fixed
+        .iter()
+        .filter(|g| {
+            !skip_m3
+                || match (g.mnemonic(), g.major_number()) {
+                    (Mnemonic::Miscellaneous, 3) => false,
+                    _ => true,
+                }
+        })
+        .map(|g| format!("{}\n", g))
+        .collect::<String>();
     let output_file = if !output_name.is_empty() {
         let output_file = input_file.with_file_name(output_name);
         let file = File::create(&output_file)?;
