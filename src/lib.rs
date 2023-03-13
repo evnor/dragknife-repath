@@ -36,7 +36,6 @@ impl<'a> DragknifePath<'a> {
         let mut fixed = vec![];
         let mut prev_angle = None;
         for command in self.commands.iter() {
-            // println!("{} {:?} {:?} {:?} {:?}", command.original().major_number(), command.start_angle(), command.end_angle(), command.start_pos(), command.end_pos());
             fixed.append(&mut command.to_fixed_gcode(prev_angle, &self.settings, &config));
             prev_angle = command.end_angle();
         }
@@ -51,144 +50,161 @@ impl<'a> Command<'a> {
         settings: &mut GCodeSettings,
     ) -> Command<'a> {
         let start = prev_command.end_pos();
-        match gcode.major_number() {
-            0 /* Rapid movement */ => {
-                let end = settings.get_target(start, gcode);
-                return Command::Rapid(RapidMovement {
-                    original: gcode,
-                    start,
-                    end,
-                })
-            },
-            1 /* Linear interpolation */ => {
-                let end = settings.get_target(start, gcode);
-                let angle = if (start-end).project_plane(&settings.plane).magnitude() <= f32::EPSILON {
-                    prev_command.end_angle()
-                } else {
-                    Some(start.angle_to(&end, &settings.plane))
-                };
-                return Command::Linear(LinearMovement {
-                    original: gcode,
-                    start,
-                    end,
-                    angle,
-                })
-            },
-            2 /* Circular interpolation, clockwise */ => {
-                let target = settings.get_target(start, gcode);
-                let center_off = settings.get_center_offset(gcode);
-                let center = start + center_off;
-                let start_angle = center.angle_to(&start, &settings.plane) - FRAC_PI_2;
-                let end_angle = center.angle_to(&target, &settings.plane) - FRAC_PI_2;
-                let radius = (start - center).project_plane(&settings.plane).magnitude();
-                let end = (target-center).normalized()*radius + center;
+        match gcode.mnemonic() {
+            Mnemonic::Miscellaneous => Command::Other(OtherCommand {
+                original: gcode,
+                pos: start,
+                angle: prev_command.end_angle(),
+            }),
+            Mnemonic::ProgramNumber => Command::Other(OtherCommand {
+                original: gcode,
+                pos: start,
+                angle: prev_command.end_angle(),
+            }),
+            Mnemonic::ToolChange => Command::Other(OtherCommand {
+                original: gcode,
+                pos: start,
+                angle: prev_command.end_angle(),
+            }),
+            Mnemonic::General => match gcode.major_number() {
+                0 /* Rapid movement */ => {
+                    let end = settings.get_target(start, gcode);
+                    return Command::Rapid(RapidMovement {
+                        original: gcode,
+                        start,
+                        end,
+                    })
+                },
+                1 /* Linear interpolation */ => {
+                    let end = settings.get_target(start, gcode);
+                    let angle = if (start-end).project_plane(&settings.plane).magnitude() <= f32::EPSILON {
+                        prev_command.end_angle()
+                    } else {
+                        Some(start.angle_to(&end, &settings.plane))
+                    };
+                    return Command::Linear(LinearMovement {
+                        original: gcode,
+                        start,
+                        end,
+                        angle,
+                    })
+                },
+                2 /* Circular interpolation, clockwise */ => {
+                    let target = settings.get_target(start, gcode);
+                    let center_off = settings.get_center_offset(gcode);
+                    let center = start + center_off;
+                    let start_angle = center.angle_to(&start, &settings.plane) - FRAC_PI_2;
+                    let end_angle = center.angle_to(&target, &settings.plane) - FRAC_PI_2;
+                    let radius = (start - center).project_plane(&settings.plane).magnitude();
+                    let end = (target-center).normalized()*radius + center;
 
-                return Command::Arc(ArcMovement {
-                    original: gcode,
-                    direction: ArcDirection::CW,
-                    start,
-                    end,
-                    center,
-                    start_angle,
-                    end_angle,
-                })
-            },
-            3 /* Circular interpolation, counterclockwise */ => {
-                let target = settings.get_target(start, gcode);
-                let center_off = settings.get_center_offset(gcode);
-                let center = start + center_off;
-                let start_angle = center.angle_to(&start, &settings.plane) + FRAC_PI_2;
-                let end_angle = center.angle_to(&target, &settings.plane) + FRAC_PI_2;
-                let radius = (start - center).project_plane(&settings.plane).magnitude();
-                let end = (target-center).normalized()*radius + center;
+                    return Command::Arc(ArcMovement {
+                        original: gcode,
+                        direction: ArcDirection::CW,
+                        start,
+                        end,
+                        center,
+                        start_angle,
+                        end_angle,
+                    })
+                },
+                3 /* Circular interpolation, counterclockwise */ => {
+                    let target = settings.get_target(start, gcode);
+                    let center_off = settings.get_center_offset(gcode);
+                    let center = start + center_off;
+                    let start_angle = center.angle_to(&start, &settings.plane) + FRAC_PI_2;
+                    let end_angle = center.angle_to(&target, &settings.plane) + FRAC_PI_2;
+                    let radius = (start - center).project_plane(&settings.plane).magnitude();
+                    let end = (target-center).normalized()*radius + center;
 
-                return Command::Arc(ArcMovement {
-                    original: gcode,
-                    direction: ArcDirection::CCW,
-                    start,
-                    end,
-                    center,
-                    start_angle,
-                    end_angle,
-                })
-            },
-            28 /* Go to machine zero */=> {
-                return Command::Home(HomeMovement {
-                    original: gcode,
-                    start,
-                })
-            },
-            17 /* Select XY plane */=> {
-                settings.plane = GCodePlane::XY;
-                return Command::Other(OtherCommand {
+                    return Command::Arc(ArcMovement {
+                        original: gcode,
+                        direction: ArcDirection::CCW,
+                        start,
+                        end,
+                        center,
+                        start_angle,
+                        end_angle,
+                    })
+                },
+                28 /* Go to machine zero */=> {
+                    return Command::Home(HomeMovement {
+                        original: gcode,
+                        start,
+                    })
+                },
+                17 /* Select XY plane */=> {
+                    settings.plane = GCodePlane::XY;
+                    return Command::Other(OtherCommand {
+                        original: gcode,
+                        pos: start,
+                        angle: prev_command.end_angle(),
+                    })
+                },
+                18 /* Select ZX plane */=> {
+                    settings.plane = GCodePlane::ZX;
+                    return Command::Other(OtherCommand {
+                        original: gcode,
+                        pos: start,
+                        angle: prev_command.end_angle(),
+                    })
+                },
+                19 /* Select YZ plane */=> {
+                    settings.plane = GCodePlane::YZ;
+                    return Command::Other(OtherCommand {
+                        original: gcode,
+                        pos: start,
+                        angle: prev_command.end_angle(),
+                    })
+                },
+                20 /* Select inches */=> {
+                    settings.unit = GCodeUnit::Inches;
+                    return Command::Other(OtherCommand {
+                        original: gcode,
+                        pos: start,
+                        angle: prev_command.end_angle(),
+                    })
+                },
+                21 /* Select mm */=> {
+                    settings.unit = GCodeUnit::Millimeters;
+                    return Command::Other(OtherCommand {
+                        original: gcode,
+                        pos: start,
+                        angle: prev_command.end_angle(),
+                    })
+                },
+                90 /* Select absolute positioning */=> {
+                    settings.positioning = GCodePositioning::Absolute;
+                    return Command::Other(OtherCommand {
+                        original: gcode,
+                        pos: start,
+                        angle: prev_command.end_angle(),
+                    })
+                },
+                91 /* Select relative positioning */=> {
+                    settings.positioning = GCodePositioning::Relative;
+                    return Command::Other(OtherCommand {
+                        original: gcode,
+                        pos: start,
+                        angle: prev_command.end_angle(),
+                    })
+                },
+                40..=44 /* Tool compensation: NOOP */ => Command::Other(OtherCommand {
                     original: gcode,
                     pos: start,
                     angle: prev_command.end_angle(),
-                })
-            },
-            18 /* Select ZX plane */=> {
-                settings.plane = GCodePlane::ZX;
-                return Command::Other(OtherCommand {
+                }),
+                54..=59 /* Set coord systems: NOOP */ => Command::Other(OtherCommand {
                     original: gcode,
                     pos: start,
                     angle: prev_command.end_angle(),
-                })
-            },
-            19 /* Select YZ plane */=> {
-                settings.plane = GCodePlane::YZ;
-                return Command::Other(OtherCommand {
+                }),
+                _ => Command::Other(OtherCommand {
                     original: gcode,
                     pos: start,
                     angle: prev_command.end_angle(),
-                })
+                }),
             },
-            20 /* Select inches */=> {
-                settings.unit = GCodeUnit::Inches;
-                return Command::Other(OtherCommand {
-                    original: gcode,
-                    pos: start,
-                    angle: prev_command.end_angle(),
-                })
-            },
-            21 /* Select mm */=> {
-                settings.unit = GCodeUnit::Millimeters;
-                return Command::Other(OtherCommand {
-                    original: gcode,
-                    pos: start,
-                    angle: prev_command.end_angle(),
-                })
-            },
-            90 /* Select absolute positioning */=> {
-                settings.positioning = GCodePositioning::Absolute;
-                return Command::Other(OtherCommand {
-                    original: gcode,
-                    pos: start,
-                    angle: prev_command.end_angle(),
-                })
-            },
-            91 /* Select relative positioning */=> {
-                settings.positioning = GCodePositioning::Relative;
-                return Command::Other(OtherCommand {
-                    original: gcode,
-                    pos: start,
-                    angle: prev_command.end_angle(),
-                })
-            },
-            40..=44 /* Tool compensation: NOOP */ => Command::Other(OtherCommand {
-                original: gcode,
-                pos: start,
-                angle: prev_command.end_angle(),
-            }),
-            54..=59 /* Set coord systems: NOOP */ => Command::Other(OtherCommand {
-                original: gcode,
-                pos: start,
-                angle: prev_command.end_angle(),
-            }),
-            _ => Command::Other(OtherCommand {
-                original: gcode,
-                pos: start,
-                angle: prev_command.end_angle(),
-            }),
         }
     }
 
@@ -208,7 +224,6 @@ impl<'a> Command<'a> {
                     command.end
                 };
                 let target = target.coords_for_plane(&settings.plane);
-                println!("{:?}", target);
                 let mut new = GCode::new(Mnemonic::General, 1.0, Span::PLACEHOLDER)
                     .with_argument(Word::new(
                         settings.plane.axis_1().main_name(),
@@ -233,7 +248,6 @@ impl<'a> Command<'a> {
                 let center_offset = command.center - new_start;
                 let new_end = new_end.coords_for_plane(&settings.plane);
                 let center_offset = center_offset.coords_for_plane(&settings.plane);
-                println!("{:?} {:?}", center_offset, new_end);
                 let mut new = GCode::new(
                     Mnemonic::General,
                     if let ArcDirection::CW = command.direction {
@@ -295,7 +309,6 @@ impl<'a> Command<'a> {
                 let target = (Vec3::unit_angle(to_angle, &settings.plane) * config.knife_offset
                     + next.start_pos())
                 .coords_for_plane(&settings.plane);
-                println!("{:?} {:?}", center_offset, target);
                 out.push(
                     GCode::new(
                         Mnemonic::General,
