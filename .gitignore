@@ -1,4 +1,4 @@
 /target
 /.vscode
 *.cnc
-!test_input.cnc
+!test*.cnc
