@@ -5,6 +5,7 @@ use dragknife_repath::app::DragknifeApp;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
+    // env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tracing_subscriber::fmt::init();
 

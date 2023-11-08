@@ -7,6 +7,7 @@ use std::f32::consts::PI;
 
 use gcode::{GCode, Mnemonic, Span, Word};
 use vec3::Vec3;
+use log::debug;
 
 use types::{
     ArcDirection, ArcMovement, Command, DragknifeConfig, GCodePlane, GCodePositioning,
