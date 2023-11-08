@@ -1,6 +1,6 @@
 use crate::vec3::Vec3;
 use gcode::GCode;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum GCodeUnit {
@@ -73,30 +73,32 @@ impl GCodePlane {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum GCodePositioning {
-    #[default]
     Relative,
+    #[default]
     Absolute,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct GCodeSettings {
+pub struct GCodeState {
     pub unit: GCodeUnit,
     pub plane: GCodePlane,
     pub positioning: GCodePositioning,
+    pub feedrate: f32,
 }
 
-impl Default for GCodeSettings {
+impl Default for GCodeState {
     fn default() -> Self {
-        GCodeSettings {
+        GCodeState {
             unit: Default::default(),
             plane: Default::default(),
             positioning: Default::default(),
+            feedrate: 3000.,
         }
     }
 }
 
-impl GCodeSettings {
-    fn unit_factor(&self) -> f32 {
+impl GCodeState {
+    pub fn unit_factor(&self) -> f32 {
         match self.unit {
             GCodeUnit::Millimeters => 1.,
             GCodeUnit::Inches => 2.54,
@@ -153,22 +155,57 @@ impl GCodeSettings {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum LiftConfig {
+    AbsoluteHeight(f32),
+    RelativeHeight(f32),
+}
+
+impl Default for LiftConfig {
+    fn default() -> Self {
+        LiftConfig::RelativeHeight(1.0)
+    }
+}
+
+impl LiftConfig {
+    pub fn calcute_height(&self, from: f32) -> f32 {
+        match self {
+            LiftConfig::AbsoluteHeight(h) => *h,
+            LiftConfig::RelativeHeight(h) => from + h,
+        }
+    }
+
+    pub fn get_height_mut(&mut self) -> &mut f32 {
+        match self {
+            LiftConfig::AbsoluteHeight(h) => h,
+            LiftConfig::RelativeHeight(h) => h,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DragknifeConfig {
     pub knife_offset: f32,
-    pub swivel_lift_height: f32,
+    pub lift_config: LiftConfig,
     pub sharp_angle_threshold: f32,
+    pub swivel_feedrate: f32,
 }
 
 impl DragknifeConfig {
-    pub fn new(knife_offset: f32, swivel_lift_height: f32, sharp_angle_threshold: f32) -> Self {
+    pub fn new(knife_offset: f32, lift_config: LiftConfig, sharp_angle_threshold: f32, swivel_feedrate: f32) -> Self {
         DragknifeConfig {
             knife_offset,
-            swivel_lift_height,
+            lift_config,
             sharp_angle_threshold,
+            swivel_feedrate,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DragknifeState {
+    pub next_feedrate: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -216,6 +253,37 @@ pub struct OtherCommand<'a> {
     pub angle: Option<f32>,
 }
 
+impl<'a> OtherCommand<'a> {
+    pub fn update_settings(&self, settings: &mut GCodeState) {
+        match self.original.major_number() {
+            17 /* Select XY plane */=> {
+                settings.plane = GCodePlane::XY;
+            },
+            18 /* Select ZX plane */=> {
+                settings.plane = GCodePlane::ZX;
+            },
+            19 /* Select YZ plane */=> {
+                settings.plane = GCodePlane::YZ;
+            },
+            20 /* Select inches */=> {
+                settings.unit = GCodeUnit::Inches;
+            },
+            21 /* Select mm */=> {
+                settings.unit = GCodeUnit::Millimeters;
+            },
+            90 /* Select absolute positioning */=> {
+                settings.positioning = GCodePositioning::Absolute;
+            },
+            91 /* Select relative positioning */=> {
+                settings.positioning = GCodePositioning::Relative;
+            },
+            40..=44 /* Tool compensation: NOOP */ => {},
+            54..=59 /* Set coord systems: NOOP */ => {},
+            _ => {},
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Command<'a> {
     Other(OtherCommand<'a>),
@@ -234,6 +302,19 @@ impl<'a> Command<'a> {
             Command::Home(command) => command.original,
             Command::Rapid(command) => command.original,
         }
+    }
+
+    pub fn update_settings(&self, settings: &mut GCodeState) -> bool {
+        match self {
+            Command::Other(command) => command.update_settings(settings),
+            _ => {
+                if let Some(feedrate) = self.original().value_for('F') {
+                    settings.feedrate = feedrate * settings.unit_factor();
+                    return true;
+                };
+            }
+        }
+        false
     }
 }
 

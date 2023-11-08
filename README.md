@@ -4,10 +4,11 @@ CNC dragknives trail behind the router like the back wheel of a bicycle. This to
 ## Features & Limitations
 * Graphical user interface.
 * Works with `G0-3,28` movement commands.
-* Works on different planes (`G17-19`), but assumes the plane doesn't change halfway (i.e. there is only one `G17-19` near the start).
-* Works with switching between mm and inches (`G20,21`).
+* Works on different planes (`G17-19`). Not sure why you would switch halfway, bet even that should work.
+* Works with mm and inches (`G20,21`).
 * Ignores coordinate system commands `G54-G59`. If they are only near the front, the output _should_ still make sense.
-* Should work with relative positioning (`G90`) but only tested with absolute positioning (`G91`).
+* Should work with relative positioning (`G90`) but only tested with absolute positioning (`G91`). Output always uses absolute positioning.
+* Only works with units/min feedrate (`G94`), not inverse time (`G93`)
 * Unknown commands are just copied to the output.
 * Should run native on Windows, Mac and Linux. Only tested on Windows.
 
@@ -25,11 +26,8 @@ The output should be in `/target/release/`
 
 ### TODO
 In no particular order:
-* Add option to adjust the feed rate of swivel movements?
 * Make use of `gcode::parse_full_with_callbacks` to copy line numbers and comments
-* Separate the GCode fixing and the egui stuff
 * Add tests
-* Look at which parts of `types.rs`, `lib.rs` and `vec3.rs` should be `pub`
 * Make it run in WASM (file dialog nees to be async)
 * Drag and Drop
 * Multiple files?
