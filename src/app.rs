@@ -6,6 +6,7 @@ use eframe::CreationContext;
 use gcode::Mnemonic;
 use serde::{Deserialize, Serialize};
 
+use crate::types::LiftConfig;
 use crate::{types::DragknifeConfig, DragknifePath};
 
 #[derive(Deserialize, Serialize)]
@@ -26,8 +27,9 @@ impl Default for DragknifeApp {
         Self {
             config: DragknifeConfig {
                 knife_offset: 1.,
-                swivel_lift_height: 1.,
+                lift_config: LiftConfig::RelativeHeight(1.0),
                 sharp_angle_threshold: 10. * PI / 180.,
+                swivel_feedrate: 300.,
             },
             input_file: None,
             output_file: None,
@@ -69,9 +71,27 @@ impl eframe::App for DragknifeApp {
                 egui::Slider::new(&mut config.knife_offset, 0.0..=50.0)
                     .text("Dragknife offset (mm)"),
             );
+            let selected_height = *config.lift_config.get_height_mut();
+            ui.horizontal(|ui| {
+                ui.label("Swivel lift type");
+                ui.selectable_value(
+                    &mut config.lift_config,
+                    LiftConfig::RelativeHeight(selected_height),
+                    "Relative",
+                );
+                ui.selectable_value(
+                    &mut config.lift_config,
+                    LiftConfig::AbsoluteHeight(selected_height),
+                    "Absolute",
+                );
+            });
             ui.add(
-                egui::Slider::new(&mut config.swivel_lift_height, 0.0..=50.0)
+                egui::Slider::new(config.lift_config.get_height_mut(), 0.0..=50.0)
                     .text("Swivel lift height (mm)"),
+            );
+            ui.add(
+                egui::Slider::new(&mut config.swivel_feedrate, 0.0..=2000.0)
+                    .text("Swivel feedrate (mm/min)"),
             );
             ui.add(
                 egui::Slider::from_get_set(0.0..=180.0, |optional| {
