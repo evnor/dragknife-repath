@@ -82,6 +82,7 @@ impl<'a> Command<'a> {
                     } else {
                         Some(start.angle_to(&end, &settings.plane))
                     };
+                    debug!("G1: {angle:.2?} {end:?}");
                     Command::Linear(LinearMovement {
                         original: gcode,
                         start,
@@ -97,7 +98,7 @@ impl<'a> Command<'a> {
                     let end_angle = center.angle_to(&target, &settings.plane) - FRAC_PI_2;
                     let radius = (start - center).project_plane(&settings.plane).magnitude();
                     let end = (target-center).normalized()*radius + center;
-                    debug!("{} {:?} {:?}", radius, target, center);
+                    debug!("G2: {radius} {start_angle:.2} {end_angle:.2} {target:?} {center:?} {end:?}");
                     Command::Arc(ArcMovement {
                         original: gcode,
                         direction: ArcDirection::CW,
@@ -116,7 +117,7 @@ impl<'a> Command<'a> {
                     let end_angle = center.angle_to(&target, &settings.plane) + FRAC_PI_2;
                     let radius = (start - center).project_plane(&settings.plane).magnitude();
                     let end = (target-center).normalized()*radius + center;
-
+                    debug!("G3: {radius} {start_angle:.2} {end_angle:.2} {start:?} {target:?} {center:?} {end:?}");
                     Command::Arc(ArcMovement {
                         original: gcode,
                         direction: ArcDirection::CCW,
@@ -201,7 +202,7 @@ impl<'a> Command<'a> {
                     + Vec3::unit_angle(command.start_angle, &settings.plane) * config.knife_offset;
                 let new_end = command.end
                     + Vec3::unit_angle(command.end_angle, &settings.plane) * config.knife_offset;
-                debug!("{:?} {:?}", Vec3::unit_angle(command.end_angle, &settings.plane), command.end);
+                debug!("Outputting Arc: {:?} {:?}", Vec3::unit_angle(command.end_angle, &settings.plane), command.end);
                 let center_offset = command.center - new_start;
                 let new_end = new_end.coords_for_plane(&settings.plane);
                 let center_offset = center_offset.coords_for_plane(&settings.plane);

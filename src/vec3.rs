@@ -85,6 +85,9 @@ impl Vec3 {
     }
 
     pub fn normalized(&self) -> Vec3 {
+        if self.magnitude() == 0. {
+            return Vec3::zero();
+        }
         *self / self.magnitude()
     }
 }
