@@ -28,7 +28,7 @@ impl<'a> DragknifePath<'a> {
         for gcode in gcodes {
             let command = Command::from_gcode(gcode, output.last(), &mut settings);
             if let Ok(command) = command {
-            output.push(command);
+                output.push(command);
             } else {
                 debug!("Dropping due to {:?}, {:?}", command, gcode)
             }
@@ -204,7 +204,8 @@ impl<'a> Command<'a> {
                 }
             }
             Command::Linear(command) => {
-                let mut out = Command::create_swivel_path(previous_angle, self, settings, state, config);
+                let mut out =
+                    Command::handle_previous_angle(previous_angle, self, settings, state, config);
                 let target = if let Some(angle) = command.angle {
                     command.end + Vec3::unit_angle(angle, &settings.plane) * config.knife_offset
                 } else {
@@ -227,7 +228,8 @@ impl<'a> Command<'a> {
                 out
             }
             Command::Arc(command) => {
-                let mut out = Command::create_swivel_path(previous_angle, self, settings, state, config);
+                let mut out =
+                    Command::handle_previous_angle(previous_angle, self, settings, state, config);
                 let new_start = command.start
                     + Vec3::unit_angle(command.start_angle, &settings.plane) * config.knife_offset;
                 let new_end = command.end
@@ -278,7 +280,7 @@ impl<'a> Command<'a> {
         }
     }
 
-    fn create_swivel_path(
+    fn handle_previous_angle(
         previous_angle: Option<f32>,
         next: &Command<'a>,
         settings: &GCodeState,
@@ -286,6 +288,7 @@ impl<'a> Command<'a> {
         config: &DragknifeConfig,
     ) -> Vec<GCode> {
         if let (Some(from_angle), Some(to_angle)) = (previous_angle, next.start_angle()) {
+            // Add swivel
             let signed_angle = signed_angle(from_angle, to_angle);
             if signed_angle.abs() > config.sharp_angle_threshold {
                 let mut out = vec![];
@@ -346,6 +349,26 @@ impl<'a> Command<'a> {
                 state.next_feedrate = Some(settings.feedrate / settings.unit_factor());
                 return out;
             }
+        } else if let (None, Some(to_angle)) = (previous_angle, next.start_angle()) {
+            // We need to add an initial offset to compensate for the length offset.
+            let mut out = vec![];
+            let offset_pos = Vec3::unit_angle(to_angle, &settings.plane) * config.knife_offset
+                + next.start_pos();
+            let offset_pos = offset_pos.coords_for_plane(&settings.plane);
+            out.push(
+                GCode::new(Mnemonic::General, 1.0, Span::PLACEHOLDER)
+                    .with_argument(Word::new(
+                        settings.plane.axis_1().main_name(),
+                        offset_pos.0,
+                        Span::PLACEHOLDER,
+                    ))
+                    .with_argument(Word::new(
+                        settings.plane.axis_2().main_name(),
+                        offset_pos.1,
+                        Span::PLACEHOLDER,
+                    )),
+            );
+            return out;
         }
         vec![]
     }
