@@ -98,7 +98,7 @@ impl<'a> Command<'a> {
                         return Err(RepathError::MissingArguments)
                     }
                     let end = settings.get_target(start, gcode);
-                    let angle = if (start-end).project_plane(&settings.plane).magnitude() <= f32::EPSILON {
+                    let angle = if (start-end).project_plane(&settings.plane).magnitude() <= 0.00001 {
                         debug!("Insufficient length; using previous end angle");
                         prev_command.end_angle()
                     } else {
@@ -121,6 +121,7 @@ impl<'a> Command<'a> {
                     let center = start + center_off;
                     let start_angle = center.angle_to(&start, &settings.plane) - FRAC_PI_2;
                     let end_angle = center.angle_to(&target, &settings.plane) - FRAC_PI_2;
+                    let (start_angle, end_angle) = (start_angle.rem_euclid(TAU), end_angle.rem_euclid(TAU));
                     let radius = (start - center).project_plane(&settings.plane).magnitude();
                     let end = (target-center).normalized()*radius + center;
                     debug!("G2: {radius} {start_angle:.2} {end_angle:.2} {target} {center_off} {center} {end}");
@@ -143,6 +144,7 @@ impl<'a> Command<'a> {
                     let center = start + center_off;
                     let start_angle = center.angle_to(&start, &settings.plane) + FRAC_PI_2;
                     let end_angle = center.angle_to(&target, &settings.plane) + FRAC_PI_2;
+                    let (start_angle, end_angle) = (start_angle.rem_euclid(TAU),end_angle.rem_euclid(TAU));
                     let radius = (start - center).project_plane(&settings.plane).magnitude();
                     let end = (target-center).normalized()*radius + center;
                     debug!("G3: {radius} {start_angle:.2} {end_angle:.2} {start} {target} {center_off} {center} {end}");
