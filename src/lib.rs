@@ -9,11 +9,12 @@ use std::f32::consts::TAU;
 use gcode::{GCode, Mnemonic, Span, Word};
 use log::debug;
 use types::DragknifeState;
+use types::RepathError;
 use vec3::Vec3;
 
 use types::{
-    ArcDirection, ArcMovement, Command, DragknifeConfig, GCodeState, HomeMovement,
-    LinearMovement, Movement, OtherCommand, RapidMovement,
+    ArcDirection, ArcMovement, Command, DragknifeConfig, GCodeState, HomeMovement, LinearMovement,
+    Movement, OtherCommand, RapidMovement,
 };
 
 pub struct DragknifePath<'a> {
@@ -26,7 +27,11 @@ impl<'a> DragknifePath<'a> {
         let mut settings = GCodeState::default();
         for gcode in gcodes {
             let command = Command::from_gcode(gcode, output.last(), &mut settings);
+            if let Ok(command) = command {
             output.push(command);
+            } else {
+                debug!("Dropping due to {:?}, {:?}", command, gcode)
+            }
         }
         DragknifePath { commands: output }
     }
@@ -37,7 +42,12 @@ impl<'a> DragknifePath<'a> {
         let mut settings = GCodeState::default();
         let mut dragknife_state = DragknifeState::default();
         for command in self.commands.iter() {
-            fixed.append(&mut command.to_fixed_gcode(prev_angle, &mut settings, &mut dragknife_state, &config));
+            fixed.append(&mut command.to_fixed_gcode(
+                prev_angle,
+                &mut settings,
+                &mut dragknife_state,
+                &config,
+            ));
             prev_angle = command.end_angle();
         }
         fixed
@@ -49,7 +59,7 @@ impl<'a> Command<'a> {
         gcode: &'a GCode,
         prev_command: Option<&Command>,
         settings: &mut GCodeState,
-    ) -> Command<'a> {
+    ) -> Result<Command<'a>, RepathError> {
         let start = prev_command.end_pos();
         debug!(
             "{:?} {:?} ({:?}) {:?}",
@@ -59,31 +69,34 @@ impl<'a> Command<'a> {
             gcode.span(),
         );
         match gcode.mnemonic() {
-            Mnemonic::Miscellaneous => Command::Other(OtherCommand {
+            Mnemonic::Miscellaneous => Ok(Command::Other(OtherCommand {
                 original: gcode,
                 pos: start,
                 angle: prev_command.end_angle(),
-            }),
-            Mnemonic::ProgramNumber => Command::Other(OtherCommand {
+            })),
+            Mnemonic::ProgramNumber => Ok(Command::Other(OtherCommand {
                 original: gcode,
                 pos: start,
                 angle: prev_command.end_angle(),
-            }),
-            Mnemonic::ToolChange => Command::Other(OtherCommand {
+            })),
+            Mnemonic::ToolChange => Ok(Command::Other(OtherCommand {
                 original: gcode,
                 pos: start,
                 angle: prev_command.end_angle(),
-            }),
+            })),
             Mnemonic::General => match gcode.major_number() {
                 0 /* Rapid movement */ => {
                     let end = settings.get_target(start, gcode);
-                    Command::Rapid(RapidMovement {
+                    Ok(Command::Rapid(RapidMovement {
                         original: gcode,
                         start,
                         end,
-                    })
+                    }))
                 },
                 1 /* Linear interpolation */ => {
+                    if gcode.arguments().len() == 0 {
+                        return Err(RepathError::MissingArguments)
+                    }
                     let end = settings.get_target(start, gcode);
                     let angle = if (start-end).project_plane(&settings.plane).magnitude() <= f32::EPSILON {
                         debug!("Insufficient length; using previous end angle");
@@ -92,14 +105,17 @@ impl<'a> Command<'a> {
                         Some(start.angle_to(&end, &settings.plane))
                     };
                     debug!("G1: {angle:.2?} {start} {end}");
-                    Command::Linear(LinearMovement {
+                    Ok(Command::Linear(LinearMovement {
                         original: gcode,
                         start,
                         end,
                         angle,
-                    })
+                    }))
                 },
                 2 /* Circular interpolation, clockwise */ => {
+                    if gcode.arguments().len() == 0 {
+                        return Err(RepathError::MissingArguments)
+                    }
                     let target = settings.get_target(start, gcode);
                     let center_off = settings.get_center_offset(gcode);
                     let center = start + center_off;
@@ -108,7 +124,7 @@ impl<'a> Command<'a> {
                     let radius = (start - center).project_plane(&settings.plane).magnitude();
                     let end = (target-center).normalized()*radius + center;
                     debug!("G2: {radius} {start_angle:.2} {end_angle:.2} {target} {center_off} {center} {end}");
-                    Command::Arc(ArcMovement {
+                    Ok(Command::Arc(ArcMovement {
                         original: gcode,
                         direction: ArcDirection::CW,
                         start,
@@ -116,9 +132,12 @@ impl<'a> Command<'a> {
                         center,
                         start_angle,
                         end_angle,
-                    })
+                    }))
                 },
                 3 /* Circular interpolation, counterclockwise */ => {
+                    if gcode.arguments().len() == 0 {
+                        return Err(RepathError::MissingArguments)
+                    }
                     let target = settings.get_target(start, gcode);
                     let center_off = settings.get_center_offset(gcode);
                     let center = start + center_off;
@@ -127,7 +146,7 @@ impl<'a> Command<'a> {
                     let radius = (start - center).project_plane(&settings.plane).magnitude();
                     let end = (target-center).normalized()*radius + center;
                     debug!("G3: {radius} {start_angle:.2} {end_angle:.2} {start} {target} {center_off} {center} {end}");
-                    Command::Arc(ArcMovement {
+                    Ok(Command::Arc(ArcMovement {
                         original: gcode,
                         direction: ArcDirection::CCW,
                         start,
@@ -135,13 +154,13 @@ impl<'a> Command<'a> {
                         center,
                         start_angle,
                         end_angle,
-                    })
+                    }))
                 },
                 28 /* Go to machine zero */=> {
-                    Command::Home(HomeMovement {
+                    Ok(Command::Home(HomeMovement {
                         original: gcode,
                         start,
-                    })
+                    }))
                 },
                 17 /* Select XY plane */|
                 18 /* Select ZX plane */|
@@ -159,7 +178,7 @@ impl<'a> Command<'a> {
                         angle: prev_command.end_angle(),
                     };
                     other_command.update_settings(settings);
-                    Command::Other(other_command)
+                    Ok(Command::Other(other_command))
                 },
             },
         }

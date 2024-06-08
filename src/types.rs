@@ -1,3 +1,5 @@
+use std::{error::Error, fmt::Display};
+
 use crate::vec3::Vec3;
 use gcode::GCode;
 use serde::{Deserialize, Serialize};
@@ -193,7 +195,12 @@ pub struct DragknifeConfig {
 }
 
 impl DragknifeConfig {
-    pub fn new(knife_offset: f32, lift_config: LiftConfig, sharp_angle_threshold: f32, swivel_feedrate: f32) -> Self {
+    pub fn new(
+        knife_offset: f32,
+        lift_config: LiftConfig,
+        sharp_angle_threshold: f32,
+        swivel_feedrate: f32,
+    ) -> Self {
         DragknifeConfig {
             knife_offset,
             lift_config,
@@ -383,4 +390,33 @@ impl<'a> Movement for Option<&Command<'a>> {
     fn end_angle(&self) -> Option<f32> {
         self.map_or(None, |c| c.end_angle())
     }
+}
+
+#[derive(Debug)]
+pub enum RepathError {
+    MissingArguments,
+}
+
+impl Display for RepathError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingArguments => write!(f, "Expected multiple arguments where none were provided. This is likely a result of line duplication.")
+        }
+    }
+}
+
+impl Error for RepathError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+
+    fn description(&self) -> &str {
+        "description() is deprecated; use Display"
+    }
+
+    fn cause(&self) -> Option<&dyn Error> {
+        self.source()
+    }
+
+    // fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {}
 }
