@@ -4,11 +4,12 @@ pub mod vec3;
 
 use std::f32::consts::FRAC_PI_2;
 use std::f32::consts::PI;
+use std::f32::consts::TAU;
 
 use gcode::{GCode, Mnemonic, Span, Word};
+use log::debug;
 use types::DragknifeState;
 use vec3::Vec3;
-use log::debug;
 
 use types::{
     ArcDirection, ArcMovement, Command, DragknifeConfig, GCodeState, HomeMovement,
@@ -50,6 +51,13 @@ impl<'a> Command<'a> {
         settings: &mut GCodeState,
     ) -> Command<'a> {
         let start = prev_command.end_pos();
+        debug!(
+            "{:?} {:?} ({:?}) {:?}",
+            gcode.mnemonic(),
+            gcode.major_number(),
+            gcode.arguments().len(),
+            gcode.span(),
+        );
         match gcode.mnemonic() {
             Mnemonic::Miscellaneous => Command::Other(OtherCommand {
                 original: gcode,
@@ -78,11 +86,12 @@ impl<'a> Command<'a> {
                 1 /* Linear interpolation */ => {
                     let end = settings.get_target(start, gcode);
                     let angle = if (start-end).project_plane(&settings.plane).magnitude() <= f32::EPSILON {
+                        debug!("Insufficient length; using previous end angle");
                         prev_command.end_angle()
                     } else {
                         Some(start.angle_to(&end, &settings.plane))
                     };
-                    debug!("G1: {angle:.2?} {end:?}");
+                    debug!("G1: {angle:.2?} {start} {end}");
                     Command::Linear(LinearMovement {
                         original: gcode,
                         start,
@@ -98,7 +107,7 @@ impl<'a> Command<'a> {
                     let end_angle = center.angle_to(&target, &settings.plane) - FRAC_PI_2;
                     let radius = (start - center).project_plane(&settings.plane).magnitude();
                     let end = (target-center).normalized()*radius + center;
-                    debug!("G2: {radius} {start_angle:.2} {end_angle:.2} {target:?} {center:?} {end:?}");
+                    debug!("G2: {radius} {start_angle:.2} {end_angle:.2} {target} {center_off} {center} {end}");
                     Command::Arc(ArcMovement {
                         original: gcode,
                         direction: ArcDirection::CW,
@@ -117,7 +126,7 @@ impl<'a> Command<'a> {
                     let end_angle = center.angle_to(&target, &settings.plane) + FRAC_PI_2;
                     let radius = (start - center).project_plane(&settings.plane).magnitude();
                     let end = (target-center).normalized()*radius + center;
-                    debug!("G3: {radius} {start_angle:.2} {end_angle:.2} {start:?} {target:?} {center:?} {end:?}");
+                    debug!("G3: {radius} {start_angle:.2} {end_angle:.2} {start} {target} {center_off} {center} {end}");
                     Command::Arc(ArcMovement {
                         original: gcode,
                         direction: ArcDirection::CCW,
@@ -202,7 +211,11 @@ impl<'a> Command<'a> {
                     + Vec3::unit_angle(command.start_angle, &settings.plane) * config.knife_offset;
                 let new_end = command.end
                     + Vec3::unit_angle(command.end_angle, &settings.plane) * config.knife_offset;
-                debug!("Outputting Arc: {:?} {:?}", Vec3::unit_angle(command.end_angle, &settings.plane), command.end);
+                debug!(
+                    "Outputting Arc: {} {}",
+                    Vec3::unit_angle(command.end_angle, &settings.plane),
+                    command.end
+                );
                 let center_offset = command.center - new_start;
                 let new_end = new_end.coords_for_plane(&settings.plane);
                 let center_offset = center_offset.coords_for_plane(&settings.plane);

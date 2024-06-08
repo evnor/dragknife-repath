@@ -1,4 +1,4 @@
-use std::ops::{Add, Div, Mul, Sub};
+use std::{fmt::Display, ops::{Add, Div, Mul, Sub}};
 
 use crate::types::GCodePlane;
 
@@ -147,5 +147,11 @@ impl Div<f32> for Vec3 {
             y: self.y / rhs,
             z: self.z / rhs,
         }
+    }
+}
+
+impl Display for Vec3 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({:.3}, {:.3}, {:.3})", self.x, self.y, self.z)
     }
 }
